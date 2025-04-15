@@ -33,6 +33,8 @@ const CardsScreen = () => {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [savedPokemons, setSavedPokemons] = useState<SavedPokemon[]>([]);
+  const [showOnlySaved, setShowOnlySaved] = useState(false);
   
   const navigation = useNavigation<CardsScreenNavigationProp>();
   const { user, signOut } = useAuth();
@@ -198,6 +200,18 @@ const CardsScreen = () => {
       setHasMore(true);
       setError(null);
       
+      // Carregar pokémons salvos
+      try {
+        const savedData = await AsyncStorage.getItem('@Pokedex:savedPokemons');
+        if (savedData) {
+          const parsedData = JSON.parse(savedData) as SavedPokemon[];
+          setSavedPokemons(parsedData);
+          console.log(`Carregados ${parsedData.length} pokémons salvos do AsyncStorage`);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar pokémons salvos:', error);
+      }
+      
       try {
         console.log('Forçando carregamento inicial de dados');
         
@@ -353,18 +367,84 @@ const CardsScreen = () => {
     }
   };
 
+  // Função para salvar um Pokémon como favorito
+  const handleSavePokemon = async (pokemon: SavedPokemon) => {
+    try {
+      // Verifica se o Pokémon já está salvo
+      const isAlreadySaved = savedPokemons.some(p => p.id === pokemon.id);
+      
+      if (isAlreadySaved) {
+        // Se já estiver salvo, remove dos favoritos
+        const updatedSavedList = savedPokemons.filter(p => p.id !== pokemon.id);
+        await AsyncStorage.setItem('@Pokedex:savedPokemons', JSON.stringify(updatedSavedList));
+        setSavedPokemons(updatedSavedList);
+        Alert.alert('Sucesso', `${pokemon.name} foi removido dos favoritos!`);
+      } else {
+        // Adicionar aos favoritos
+        const updatedSavedList = [...savedPokemons, pokemon];
+        await AsyncStorage.setItem('@Pokedex:savedPokemons', JSON.stringify(updatedSavedList));
+        setSavedPokemons(updatedSavedList);
+        Alert.alert('Sucesso', `${pokemon.name} foi adicionado aos favoritos!`);
+      }
+    } catch (error) {
+      console.error('Erro ao salvar/remover Pokémon:', error);
+      Alert.alert('Erro', 'Não foi possível salvar/remover o Pokémon.');
+    }
+  };
+
+  // Verifica se um Pokémon está salvo
+  const isPokemonSaved = (id: number) => {
+    return savedPokemons.some(p => p.id === id);
+  };
+
+  // Alterna entre todos os pokémons e apenas os favoritos
+  const toggleSavedFilter = () => {
+    setShowOnlySaved(!showOnlySaved);
+  };
+
+  // Dados a serem exibidos na FlatList (filtrados ou não)
+  const displayData = showOnlySaved ? savedPokemons : pokemons;
+
   // Renderiza cada card de Pokémon (ajustado para o padrão do projeto de referência)
-  const renderPokemonCard = ({ item }: { item: SavedPokemon }) => (
-    <Card style={{ margin: 10 }}>
-      {item.image && (
-        <Card.Cover source={{ uri: item.image }} />
-      )}
-      <Card.Title title={item.name.charAt(0).toUpperCase() + item.name.slice(1)} />
-      <Button mode="contained" onPress={() => handleViewDetails(item)}>
-        Ver detalhes
-      </Button>
-    </Card>
-  );
+  const renderPokemonCard = ({ item }: { item: SavedPokemon }) => {
+    const isSaved = isPokemonSaved(item.id);
+    
+    return (
+      <Card style={{ margin: 10 }}>
+        {item.image && (
+          <Card.Cover source={{ uri: item.image }} />
+        )}
+        <Card.Title 
+          title={item.name.charAt(0).toUpperCase() + item.name.slice(1)} 
+          right={(props) => (
+            <IconButton
+              {...props}
+              icon={isSaved ? "heart" : "heart-outline"}
+              iconColor={isSaved ? "#F44336" : undefined}
+              onPress={() => handleSavePokemon(item)}
+            />
+          )}
+        />
+        <Card.Actions style={styles.cardActions}>
+          <Button 
+            mode="outlined" 
+            onPress={() => handleRemovePokemon(item.id)}
+            style={styles.cardButton}
+            icon="delete"
+          >
+            Excluir
+          </Button>
+          <Button 
+            mode="contained" 
+            onPress={() => handleViewDetails(item)}
+            style={styles.cardButton}
+          >
+            Ver detalhes
+          </Button>
+        </Card.Actions>
+      </Card>
+    );
+  };
 
   // Componente para exibir mensagem de erro com botão para tentar novamente
   const ErrorView = () => (
@@ -400,40 +480,86 @@ const CardsScreen = () => {
           />
         </View>
         
+        {/* Barra de filtro */}
+        <View style={styles.filterBar}>
+          <Text style={styles.filterText}>
+            {showOnlySaved ? 'Mostrando favoritos' : 'Mostrando todos'}
+          </Text>
+          <Button 
+            mode="outlined"
+            icon={showOnlySaved ? "cards" : "heart"}
+            onPress={toggleSavedFilter}
+            style={styles.filterButton}
+          >
+            {showOnlySaved ? 'Ver todos' : 'Ver favoritos'}
+          </Button>
+        </View>
+        
         {error && !refreshing ? (
           <ErrorView />
         ) : (
-          <FlatList
-            data={pokemons}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderPokemonCard}
-            contentContainerStyle={styles.list}
-            onEndReached={loadMorePokemons}
-            onEndReachedThreshold={0.1}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                colors={['#2196F3']}
+          <>
+            <FlatList
+              data={displayData}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={renderPokemonCard}
+              contentContainerStyle={styles.list}
+              onEndReached={!showOnlySaved ? loadMorePokemons : undefined}
+              onEndReachedThreshold={0.1}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={['#2196F3']}
+                />
+              }
+              ListEmptyComponent={
+                loading && !refreshing ? (
+                  <View style={styles.emptyContainer}>
+                    <ActivityIndicator size="large" color="#2196F3" />
+                    <Text style={styles.loadingText}>Carregando Pokémons...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>
+                      {showOnlySaved ? 'Você não tem pokémons favoritos' : 'Nenhum pokémon encontrado'}
+                    </Text>
+                    {showOnlySaved && (
+                      <Button 
+                        mode="contained"
+                        style={styles.retryButton}
+                        onPress={toggleSavedFilter}
+                      >
+                        Ver todos os pokémons
+                      </Button>
+                    )}
+                  </View>
+                )
+              }
+              ListFooterComponent={
+                loading && !refreshing && displayData.length > 0 ? (
+                  <View style={styles.loadingFooter}>
+                    <ActivityIndicator size="large" color="#2196F3" />
+                    <Text>Carregando mais Pokémon...</Text>
+                  </View>
+                ) : null
+              }
+            />
+            
+            {/* Botão ADD para adicionar mais pokémons */}
+            {!showOnlySaved && (
+              <FAB
+                style={styles.fab}
+                icon="plus"
+                onPress={() => {
+                  setRefreshing(true);
+                  loadMorePokemons();
+                }}
+                disabled={loading || refreshing || !hasMore}
+                label="Adicionar"
               />
-            }
-            ListEmptyComponent={
-              loading && !refreshing ? (
-                <View style={styles.emptyContainer}>
-                  <ActivityIndicator size="large" color="#2196F3" />
-                  <Text style={styles.loadingText}>Carregando Pokémons...</Text>
-                </View>
-              ) : null
-            }
-            ListFooterComponent={
-              loading && !refreshing && pokemons.length > 0 ? (
-                <View style={styles.loadingFooter}>
-                  <ActivityIndicator size="large" color="#2196F3" />
-                  <Text>Carregando mais Pokémon...</Text>
-                </View>
-              ) : null
-            }
-          />
+            )}
+          </>
         )}
       </View>
     </SafeAreaProvider>
@@ -533,6 +659,37 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+  },
+  cardActions: {
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  cardButton: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#2196F3',
+  },
+  filterBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    elevation: 2,
+  },
+  filterText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  filterButton: {
+    borderRadius: 20,
   },
 });
 
