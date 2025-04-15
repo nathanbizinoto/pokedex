@@ -126,7 +126,7 @@ Este projeto segue uma estrutura organizada com separação de responsabilidades
 2. Adicione novos serviços em `/src/services`
 3. Implemente novas telas em `/src/screens`
 
-## Autor
+## Autores
 
 - Nathan Bizinoto de Oliveira
 - Viícius Rodrigues Oliveira
