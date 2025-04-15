@@ -56,16 +56,20 @@ const CardsScreen = () => {
         setLoading(false);
         return;
       }
+      
       if (!response.next) {
         setHasMore(false);
       }
+      
       // Busca os detalhes de cada Pokémon com timeout
       console.log('Iniciando busca de detalhes dos pokémons');
       const pokemonDetailsPromises = response.results.map(
         pokemon => timeoutPromise(fetchPokemonDetails(pokemon.name), 8000)
       );
+      
       const pokemonDetailsResponses = await Promise.allSettled(pokemonDetailsPromises);
       console.log('Resultado das Promises:', pokemonDetailsResponses);
+      
       const formattedPokemons = pokemonDetailsResponses
         .filter(r => r.status === 'fulfilled')
         .map((r: any) => ({
@@ -74,8 +78,10 @@ const CardsScreen = () => {
           image: r.value.sprites.other['official-artwork'].front_default || r.value.sprites.front_default,
           types: r.value.types.map((typeInfo: any) => typeInfo.type.name)
         }));
+      
       console.log('Pokémons formatados:', formattedPokemons);
       setOffset(offset + PAGE_SIZE);
+      
       setPokemons(prev => {
         const newPokemons = [...prev];
         formattedPokemons.forEach(pokemon => {
@@ -85,6 +91,7 @@ const CardsScreen = () => {
         });
         return newPokemons;
       });
+      
       if (formattedPokemons.length === 0) {
         Alert.alert('Erro', 'Nenhum Pokémon foi carregado. Verifique sua conexão ou tente novamente mais tarde.');
       }

@@ -53,16 +53,31 @@ export interface PokemonDetails {
 
 const BASE_URL = 'https://pokeapi.co/api/v2';
 
+// Função utilitária para timeout de Promise
+function timeoutPromise<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout na requisição')), ms))
+  ]);
+}
+
 // Buscar lista de Pokémon
 export const fetchPokemons = async (offset = 0, limit = 20): Promise<PokemonListResponse> => {
   try {
-    const response = await fetch(`${BASE_URL}/pokemon?offset=${offset}&limit=${limit}`);
+    console.log(`Buscando Pokémons: offset=${offset}, limit=${limit}`);
+    const response = await timeoutPromise(
+      fetch(`${BASE_URL}/pokemon?offset=${offset}&limit=${limit}`),
+      10000
+    );
     
     if (!response.ok) {
-      throw new Error('Falha ao buscar Pokémons');
+      const errorMsg = `Falha ao buscar Pokémons: ${response.status} ${response.statusText}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
     
     const data = await response.json();
+    console.log(`Pokémons encontrados: ${data.results.length}`);
     return data;
   } catch (error) {
     console.error('Erro ao buscar Pokémons:', error);
@@ -74,13 +89,20 @@ export const fetchPokemons = async (offset = 0, limit = 20): Promise<PokemonList
 // Buscar detalhes de um Pokémon específico
 export const fetchPokemonDetails = async (nameOrId: string | number): Promise<PokemonDetails> => {
   try {
-    const response = await fetch(`${BASE_URL}/pokemon/${nameOrId}`);
+    console.log(`Buscando detalhes do Pokémon: ${nameOrId}`);
+    const response = await timeoutPromise(
+      fetch(`${BASE_URL}/pokemon/${nameOrId}`),
+      10000
+    );
     
     if (!response.ok) {
-      throw new Error(`Falha ao buscar detalhes do Pokémon ${nameOrId}`);
+      const errorMsg = `Falha ao buscar detalhes do Pokémon ${nameOrId}: ${response.status} ${response.statusText}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
     
     const data = await response.json();
+    console.log(`Detalhes do Pokémon ${nameOrId} obtidos com sucesso`);
     return data;
   } catch (error) {
     console.error(`Erro ao buscar detalhes do Pokémon ${nameOrId}:`, error);
