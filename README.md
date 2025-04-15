@@ -128,7 +128,8 @@ Este projeto segue uma estrutura organizada com separação de responsabilidades
 
 ## Autor
 
-- Seu Nome Completo
+- Nathan Bizinoto de Oliveira
+- Viícius Rodrigues Oliveira
 
 ## Licença
 
