@@ -46,58 +46,101 @@ const CardsScreen = () => {
   // Carrega mais Pokémon da API
   const loadMorePokemons = useCallback(async () => {
     console.log('Chamou loadMorePokemons');
-    if (!hasMore || loading) return;
+    if (!hasMore || loading) {
+      console.log('Ignorando chamada (loading ou sem mais itens)');
+      return;
+    }
+    
     setLoading(true);
+    
     try {
-      const response = await timeoutPromise(fetchPokemons(offset, PAGE_SIZE), 8000);
-      console.log('Resposta fetchPokemons:', response);
-      if (!response || !response.results) {
-        Alert.alert('Erro', 'A API não respondeu corretamente.');
-        setLoading(false);
+      console.log(`Buscando Pokémons: offset=${offset}, limit=${PAGE_SIZE}`);
+      
+      // Busca lista de Pokémons
+      const response = await fetchPokemons(offset, PAGE_SIZE);
+      
+      if (!response || !response.results || response.results.length === 0) {
+        console.log('Nenhum resultado encontrado');
+        setHasMore(false);
+        Alert.alert('Aviso', 'Não há mais Pokémons para carregar.');
         return;
       }
       
+      // Verifica se há mais páginas
       if (!response.next) {
+        console.log('Chegou ao fim da lista');
         setHasMore(false);
       }
       
-      // Busca os detalhes de cada Pokémon com timeout
-      console.log('Iniciando busca de detalhes dos pokémons');
-      const pokemonDetailsPromises = response.results.map(
-        pokemon => timeoutPromise(fetchPokemonDetails(pokemon.name), 8000)
-      );
+      // Divide os resultados em grupos menores para evitar sobrecarga
+      const BATCH_SIZE = 5;
+      const batches = [];
       
-      const pokemonDetailsResponses = await Promise.allSettled(pokemonDetailsPromises);
-      console.log('Resultado das Promises:', pokemonDetailsResponses);
+      for (let i = 0; i < response.results.length; i += BATCH_SIZE) {
+        batches.push(response.results.slice(i, i + BATCH_SIZE));
+      }
       
-      const formattedPokemons = pokemonDetailsResponses
-        .filter(r => r.status === 'fulfilled')
-        .map((r: any) => ({
-          id: r.value.id,
-          name: r.value.name,
-          image: r.value.sprites.other['official-artwork'].front_default || r.value.sprites.front_default,
-          types: r.value.types.map((typeInfo: any) => typeInfo.type.name)
+      const allPokemonDetails = [];
+      
+      // Processa cada lote sequencialmente
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        console.log(`Processando lote ${i+1}/${batches.length} (${batch.length} Pokémons)`);
+        
+        const batchPromises = batch.map(pokemon => 
+          fetchPokemonDetails(pokemon.name)
+            .catch(error => {
+              console.error(`Erro ao buscar detalhes de ${pokemon.name}:`, error);
+              return null;
+            })
+        );
+        
+        const batchResults = await Promise.all(batchPromises);
+        
+        const validResults = batchResults.filter(result => result !== null);
+        allPokemonDetails.push(...validResults);
+      }
+      
+      // Formata os detalhes obtidos
+      const formattedPokemons = allPokemonDetails
+        .filter(Boolean)
+        .map(data => ({
+          id: data.id,
+          name: data.name,
+          image: data.sprites.other['official-artwork'].front_default || data.sprites.front_default,
+          types: data.types.map(typeInfo => typeInfo.type.name)
         }));
       
-      console.log('Pokémons formatados:', formattedPokemons);
-      setOffset(offset + PAGE_SIZE);
+      console.log(`Total de Pokémons carregados: ${formattedPokemons.length}`);
       
-      setPokemons(prev => {
-        const newPokemons = [...prev];
-        formattedPokemons.forEach(pokemon => {
-          if (!newPokemons.some(p => p.id === pokemon.id)) {
-            newPokemons.push(pokemon);
-          }
+      // Atualiza o estado apenas se houver resultados
+      if (formattedPokemons.length > 0) {
+        setOffset(offset + PAGE_SIZE);
+        
+        setPokemons(prev => {
+          const newPokemons = [...prev];
+          
+          formattedPokemons.forEach(pokemon => {
+            if (!newPokemons.some(p => p.id === pokemon.id)) {
+              newPokemons.push(pokemon);
+            }
+          });
+          
+          return newPokemons;
         });
-        return newPokemons;
-      });
-      
-      if (formattedPokemons.length === 0) {
-        Alert.alert('Erro', 'Nenhum Pokémon foi carregado. Verifique sua conexão ou tente novamente mais tarde.');
+      } else {
+        console.warn('Nenhum Pokémon foi carregado nesta consulta');
+        Alert.alert(
+          'Aviso', 
+          'Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.'
+        );
       }
     } catch (error) {
       console.error('Erro ao carregar mais Pokémon:', error);
-      Alert.alert('Erro', 'Não foi possível carregar mais Pokémon.');
+      Alert.alert(
+        'Erro', 
+        'Ocorreu um problema ao carregar mais Pokémons. Tente novamente mais tarde.'
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
