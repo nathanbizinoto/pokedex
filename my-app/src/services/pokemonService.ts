@@ -54,6 +54,8 @@ export interface PokemonDetails {
 const BASE_URL = 'https://pokeapi.co/api/v2';
 const TIMEOUT_MS = 15000; // 15 segundos
 const MAX_RETRIES = 2;
+const RETRY_DELAY_BASE = 1000; // 1 segundo inicial
+let alertShownTimestamp = 0; 
 
 // Função utilitária para timeout de Promise
 function timeoutPromise<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
@@ -65,10 +67,10 @@ function timeoutPromise<T>(promise: Promise<T>, ms: number, errorMessage: string
   ]);
 }
 
-// Função para fazer uma requisição com retentativas automáticas
-async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Response> {
+// Função para fazer uma requisição com retentativas automáticas e atraso exponencial
+async function fetchWithRetry(url: string, retries = MAX_RETRIES, attempt = 0): Promise<Response> {
   try {
-    console.log(`Fazendo requisição para ${url}`);
+    console.log(`Fazendo requisição para ${url} (tentativa ${attempt + 1}/${MAX_RETRIES + 1})`);
     const response = await timeoutPromise(
       fetch(url), 
       TIMEOUT_MS, 
@@ -84,11 +86,25 @@ async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Respo
     console.error(`Erro na requisição para ${url}:`, error);
     
     if (retries > 0) {
-      console.log(`Tentando novamente (${retries} tentativas restantes)...`);
-      return fetchWithRetry(url, retries - 1);
+      // Calcula atraso exponencial com jitter para evitar múltiplas requisições simultâneas
+      const delay = RETRY_DELAY_BASE * Math.pow(2, attempt) + Math.floor(Math.random() * 1000);
+      console.log(`Aguardando ${delay}ms antes de tentar novamente...`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return fetchWithRetry(url, retries - 1, attempt + 1);
     }
     
     throw error;
+  }
+}
+
+// Função para mostrar alertas sem duplicação (evita múltiplos alertas em sequência)
+function showUniqueAlert(title: string, message: string) {
+  const now = Date.now();
+  // Só mostra um alerta a cada 3 segundos para evitar spam de alertas
+  if (now - alertShownTimestamp > 3000) {
+    Alert.alert(title, message);
+    alertShownTimestamp = now;
   }
 }
 
@@ -105,7 +121,7 @@ export const fetchPokemons = async (offset = 0, limit = 20): Promise<PokemonList
     return data;
   } catch (error) {
     console.error('Erro ao buscar Pokémons:', error);
-    Alert.alert(
+    showUniqueAlert(
       'Erro de Conexão', 
       'Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.'
     );
@@ -126,10 +142,7 @@ export const fetchPokemonDetails = async (nameOrId: string | number): Promise<Po
     return data;
   } catch (error) {
     console.error(`Erro ao buscar detalhes do Pokémon ${nameOrId}:`, error);
-    Alert.alert(
-      'Erro de Conexão',
-      `Não foi possível carregar os detalhes do Pokémon ${nameOrId}. Verifique sua conexão e tente novamente.`
-    );
+    // Não mostra alertas para detalhes individuais para evitar spam
     throw error;
   }
 }; 

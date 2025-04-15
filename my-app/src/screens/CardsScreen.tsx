@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { ActivityIndicator, Button, Card, FAB, IconButton, Text, Title } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -31,6 +31,8 @@ const CardsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   const navigation = useNavigation<CardsScreenNavigationProp>();
   const { user, signOut } = useAuth();
@@ -46,14 +48,16 @@ const CardsScreen = () => {
   // Carrega mais Pokémon da API
   const loadMorePokemons = useCallback(async () => {
     console.log('Chamou loadMorePokemons');
+    
+    // Evita chamadas duplicadas ou desnecessárias
     if (!hasMore || loading) {
       console.log('Ignorando chamada (loading ou sem mais itens)');
       return;
     }
     
-    setLoading(true);
-    
     try {
+      setError(null);
+      setLoading(true);
       console.log(`Buscando Pokémons: offset=${offset}, limit=${PAGE_SIZE}`);
       
       // Busca lista de Pokémons
@@ -63,6 +67,8 @@ const CardsScreen = () => {
         console.log('Nenhum resultado encontrado');
         setHasMore(false);
         Alert.alert('Aviso', 'Não há mais Pokémons para carregar.');
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
       
@@ -115,7 +121,7 @@ const CardsScreen = () => {
       
       // Atualiza o estado apenas se houver resultados
       if (formattedPokemons.length > 0) {
-        setOffset(offset + PAGE_SIZE);
+        setOffset(prevOffset => prevOffset + PAGE_SIZE);
         
         setPokemons(prev => {
           const newPokemons = [...prev];
@@ -128,39 +134,67 @@ const CardsScreen = () => {
           
           return newPokemons;
         });
+        
+        setInitialLoad(false);
       } else {
         console.warn('Nenhum Pokémon foi carregado nesta consulta');
-        Alert.alert(
-          'Aviso', 
-          'Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.'
-        );
+        if (initialLoad) {
+          setError('Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.');
+        } else {
+          Alert.alert(
+            'Aviso', 
+            'Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.'
+          );
+        }
       }
     } catch (error) {
       console.error('Erro ao carregar mais Pokémon:', error);
-      Alert.alert(
-        'Erro', 
-        'Ocorreu um problema ao carregar mais Pokémons. Tente novamente mais tarde.'
-      );
+      if (initialLoad) {
+        setError('Ocorreu um problema ao carregar os Pokémons. Verifique sua conexão de internet e tente novamente.');
+      } else {
+        Alert.alert(
+          'Erro', 
+          'Ocorreu um problema ao carregar mais Pokémons. Tente novamente mais tarde.'
+        );
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [offset, hasMore, loading]);
+  }, [hasMore, loading, offset, initialLoad]);
 
   // Carrega os Pokémon ao iniciar a tela (sempre da API)
   useEffect(() => {
+    const initializeScreen = async () => {
+      console.log('Inicializando tela de Cards');
+      setPokemons([]);
+      setOffset(0);
+      setHasMore(true);
+      setLoading(true);
+      
+      try {
+        await loadMorePokemons();
+      } catch (error) {
+        console.error('Erro na inicialização:', error);
+        setLoading(false);
+      }
+    };
+
+    initializeScreen();
+  }, [loadMorePokemons]);
+
+  // Função para atualizar a lista
+  const onRefresh = useCallback(() => {
+    if (refreshing) return;
+    
+    console.log('Iniciando refresh manual');
+    setRefreshing(true);
     setPokemons([]);
     setOffset(0);
     setHasMore(true);
-    setLoading(true);
+    
     loadMorePokemons();
-  }, []);
-
-  // Função para atualizar a lista
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadMorePokemons();
-  };
+  }, [refreshing, loadMorePokemons]);
 
   // Função para remover um Pokémon da lista
   const handleRemovePokemon = async (id: number) => {
@@ -240,6 +274,24 @@ const CardsScreen = () => {
     </Card>
   );
 
+  // Componente para exibir mensagem de erro com botão para tentar novamente
+  const ErrorView = () => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.errorText}>{error}</Text>
+      <Button 
+        mode="contained" 
+        style={styles.retryButton}
+        onPress={() => {
+          setOffset(0);
+          setHasMore(true);
+          loadMorePokemons();
+        }}
+      >
+        Tentar Novamente
+      </Button>
+    </View>
+  );
+
   return (
     <SafeAreaProvider>
       <View style={styles.container}>
@@ -255,29 +307,42 @@ const CardsScreen = () => {
             style={styles.logoutButton}
           />
         </View>
-        <FlatList
-          data={pokemons}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderPokemonCard}
-          contentContainerStyle={styles.list}
-          onEndReached={loadMorePokemons}
-          onEndReachedThreshold={0.1}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={['#2196F3']}
-            />
-          }
-          ListFooterComponent={
-            loading && !refreshing ? (
-              <View style={styles.loadingFooter}>
-                <ActivityIndicator size="large" color="#2196F3" />
-                <Text>Carregando mais Pokémon...</Text>
-              </View>
-            ) : null
-          }
-        />
+        
+        {error && !refreshing ? (
+          <ErrorView />
+        ) : (
+          <FlatList
+            data={pokemons}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderPokemonCard}
+            contentContainerStyle={styles.list}
+            onEndReached={loadMorePokemons}
+            onEndReachedThreshold={0.1}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#2196F3']}
+              />
+            }
+            ListEmptyComponent={
+              loading && !refreshing ? (
+                <View style={styles.emptyContainer}>
+                  <ActivityIndicator size="large" color="#2196F3" />
+                  <Text style={styles.loadingText}>Carregando Pokémons...</Text>
+                </View>
+              ) : null
+            }
+            ListFooterComponent={
+              loading && !refreshing && pokemons.length > 0 ? (
+                <View style={styles.loadingFooter}>
+                  <ActivityIndicator size="large" color="#2196F3" />
+                  <Text>Carregando mais Pokémon...</Text>
+                </View>
+              ) : null
+            }
+          />
+        )}
       </View>
     </SafeAreaProvider>
   );
@@ -362,6 +427,20 @@ const styles = StyleSheet.create({
   },
   refreshButton: {
     marginTop: 16,
+  },
+  errorText: {
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#F44336'
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
   },
 });
 
