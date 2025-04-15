@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity, ScrollView } from 'react-native';
 import { ActivityIndicator, Button, Card, FAB, IconButton, Text, Title } from 'react-native-paper';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchPokemons, fetchPokemonDetails, PokemonDetails } from '../services/pokemonService';
 import { useAuth } from '../context/AuthContext';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 type RootStackParamList = {
   Login: undefined;
@@ -34,95 +35,76 @@ const CardsScreen = () => {
   const navigation = useNavigation<CardsScreenNavigationProp>();
   const { user, signOut } = useAuth();
 
-  // Carrega os Pokémon salvos do AsyncStorage
-  const loadSavedPokemons = useCallback(async () => {
-    try {
-      const savedData = await AsyncStorage.getItem('@Pokedex:savedPokemons');
-      if (savedData) {
-        const pokemonData = JSON.parse(savedData);
-        setPokemons(pokemonData);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar Pokémon salvos:', error);
-    }
-  }, []);
-
-  // Atualiza a lista de Pokémon salvos no AsyncStorage
-  const updateSavedPokemons = async (newList: SavedPokemon[]) => {
-    try {
-      await AsyncStorage.setItem('@Pokedex:savedPokemons', JSON.stringify(newList));
-      setPokemons(newList);
-    } catch (error) {
-      console.error('Erro ao salvar Pokémon:', error);
-    }
-  };
+  // Função utilitária para timeout de Promise
+  function timeoutPromise<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout na requisição')), ms))
+    ]);
+  }
 
   // Carrega mais Pokémon da API
   const loadMorePokemons = useCallback(async () => {
+    console.log('Chamou loadMorePokemons');
     if (!hasMore || loading) return;
-    
     setLoading(true);
-    
     try {
-      const response = await fetchPokemons(offset, PAGE_SIZE);
-      
-      // Verifica se ainda existem mais Pokémon para carregar
+      const response = await timeoutPromise(fetchPokemons(offset, PAGE_SIZE), 8000);
+      console.log('Resposta fetchPokemons:', response);
+      if (!response || !response.results) {
+        Alert.alert('Erro', 'A API não respondeu corretamente.');
+        setLoading(false);
+        return;
+      }
       if (!response.next) {
         setHasMore(false);
       }
-      
-      // Busca os detalhes de cada Pokémon
+      // Busca os detalhes de cada Pokémon com timeout
+      console.log('Iniciando busca de detalhes dos pokémons');
       const pokemonDetailsPromises = response.results.map(
-        pokemon => fetchPokemonDetails(pokemon.name)
+        pokemon => timeoutPromise(fetchPokemonDetails(pokemon.name), 8000)
       );
-      
-      const pokemonDetailsResponses = await Promise.all(pokemonDetailsPromises);
-      
-      const formattedPokemons = pokemonDetailsResponses.map(pokemon => ({
-        id: pokemon.id,
-        name: pokemon.name,
-        image: pokemon.sprites.other['official-artwork'].front_default || pokemon.sprites.front_default,
-        types: pokemon.types.map(typeInfo => typeInfo.type.name)
-      }));
-      
+      const pokemonDetailsResponses = await Promise.allSettled(pokemonDetailsPromises);
+      console.log('Resultado das Promises:', pokemonDetailsResponses);
+      const formattedPokemons = pokemonDetailsResponses
+        .filter(r => r.status === 'fulfilled')
+        .map((r: any) => ({
+          id: r.value.id,
+          name: r.value.name,
+          image: r.value.sprites.other['official-artwork'].front_default || r.value.sprites.front_default,
+          types: r.value.types.map((typeInfo: any) => typeInfo.type.name)
+        }));
+      console.log('Pokémons formatados:', formattedPokemons);
       setOffset(offset + PAGE_SIZE);
-      
-      // Não adicionar Pokémon que já estão na lista
-      const newPokemons = [...pokemons];
-      formattedPokemons.forEach(pokemon => {
-        if (!newPokemons.some(p => p.id === pokemon.id)) {
-          newPokemons.push(pokemon);
-        }
+      setPokemons(prev => {
+        const newPokemons = [...prev];
+        formattedPokemons.forEach(pokemon => {
+          if (!newPokemons.some(p => p.id === pokemon.id)) {
+            newPokemons.push(pokemon);
+          }
+        });
+        return newPokemons;
       });
-      
-      await updateSavedPokemons(newPokemons);
+      if (formattedPokemons.length === 0) {
+        Alert.alert('Erro', 'Nenhum Pokémon foi carregado. Verifique sua conexão ou tente novamente mais tarde.');
+      }
     } catch (error) {
       console.error('Erro ao carregar mais Pokémon:', error);
-      Alert.alert('Erro', 'Não foi possível carregar mais Pokémon');
+      Alert.alert('Erro', 'Não foi possível carregar mais Pokémon.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [offset, hasMore, loading, pokemons]);
+  }, [offset, hasMore, loading]);
 
-  // Carrega os Pokémon ao iniciar a tela
+  // Carrega os Pokémon ao iniciar a tela (sempre da API)
   useEffect(() => {
-    loadSavedPokemons().then(() => {
-      // Se não houver Pokémon salvos, carrega da API
-      if (pokemons.length === 0) {
-        loadMorePokemons();
-      } else {
-        setLoading(false);
-      }
-    });
+    setPokemons([]);
+    setOffset(0);
+    setHasMore(true);
+    setLoading(true);
+    loadMorePokemons();
   }, []);
-
-  // Recarrega toda vez que a tela recebe foco
-  useFocusEffect(
-    useCallback(() => {
-      loadSavedPokemons();
-    }, [loadSavedPokemons])
-  );
 
   // Função para atualizar a lista
   const onRefresh = () => {
@@ -172,106 +154,57 @@ const CardsScreen = () => {
     );
   };
 
-  // Renderiza cada card de Pokémon
-  const renderPokemonCard = ({ item }: { item: SavedPokemon }) => {
-    // Define a cor de fundo baseada no tipo do Pokémon
-    const getTypeColor = (type: string) => {
-      const typeColors: Record<string, string> = {
-        normal: '#A8A878',
-        fire: '#F08030',
-        water: '#6890F0',
-        electric: '#F8D030',
-        grass: '#78C850',
-        ice: '#98D8D8',
-        fighting: '#C03028',
-        poison: '#A040A0',
-        ground: '#E0C068',
-        flying: '#A890F0',
-        psychic: '#F85888',
-        bug: '#A8B820',
-        rock: '#B8A038',
-        ghost: '#705898',
-        dragon: '#7038F8',
-        dark: '#705848',
-        steel: '#B8B8D0',
-        fairy: '#EE99AC',
-      };
-      
-      return typeColors[type] || '#CCCCCC';
-    };
-
-    return (
-      <Card style={styles.card}>
-        <Card.Title 
-          title={item.name.charAt(0).toUpperCase() + item.name.slice(1)} 
-          subtitle={`#${item.id}`}
-          right={() => (
-            <IconButton
-              icon="delete"
-              size={24}
-              onPress={() => handleRemovePokemon(item.id)}
-            />
-          )}
-        />
-        <Card.Content>
-          <View style={styles.cardContent}>
-            {item.image && (
-              <Card.Cover 
-                source={{ uri: item.image }} 
-                style={styles.pokemonImage} 
-              />
-            )}
-            <View style={styles.typesContainer}>
-              {item.types.map((type, index) => (
-                <View 
-                  key={index} 
-                  style={[
-                    styles.typeTag, 
-                    { backgroundColor: getTypeColor(type) }
-                  ]}
-                >
-                  <Text style={styles.typeText}>{type}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </Card.Content>
-        <Card.Actions>
-          <Button mode="contained" onPress={() => handleViewDetails(item)}>
-            VER MAIS DETALHES
-          </Button>
-        </Card.Actions>
-      </Card>
-    );
+  // Atualiza a lista de Pokémon salvos no AsyncStorage
+  const updateSavedPokemons = async (newList: SavedPokemon[]) => {
+    try {
+      await AsyncStorage.setItem('@Pokedex:savedPokemons', JSON.stringify(newList));
+      setPokemons(newList);
+    } catch (error) {
+      console.error('Erro ao salvar Pokémon:', error);
+    }
   };
 
+  // Função para limpar o AsyncStorage
+  const handleClearStorage = async () => {
+    try {
+      await AsyncStorage.removeItem('@Pokedex:savedPokemons');
+      setPokemons([]);
+      setOffset(0);
+      setHasMore(true);
+      Alert.alert('Sucesso', 'Pokémons salvos removidos!');
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível limpar os Pokémons salvos.');
+    }
+  };
+
+  // Renderiza cada card de Pokémon (ajustado para o padrão do projeto de referência)
+  const renderPokemonCard = ({ item }: { item: SavedPokemon }) => (
+    <Card style={{ margin: 10 }}>
+      {item.image && (
+        <Card.Cover source={{ uri: item.image }} />
+      )}
+      <Card.Title title={item.name.charAt(0).toUpperCase() + item.name.slice(1)} />
+      <Button mode="contained" onPress={() => handleViewDetails(item)}>
+        Ver detalhes
+      </Button>
+    </Card>
+  );
+
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.userInfo}>
-          <Title style={styles.title}>PokéDex</Title>
-          {user && <Text style={styles.welcomeText}>Olá, {user.name.split(' ')[0]}!</Text>}
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.userInfo}>
+            <Title style={styles.title}>PokéDex</Title>
+            {user && <Text style={styles.welcomeText}>Olá, {user.name.split(' ')[0]}!</Text>}
+          </View>
+          <IconButton
+            icon="logout"
+            size={24}
+            onPress={handleLogout}
+            style={styles.logoutButton}
+          />
         </View>
-        <IconButton
-          icon="logout"
-          size={24}
-          onPress={handleLogout}
-          style={styles.logoutButton}
-        />
-      </View>
-      
-      {pokemons.length === 0 && !loading ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Nenhum Pokémon encontrado</Text>
-          <Button 
-            mode="contained" 
-            onPress={onRefresh}
-            style={styles.refreshButton}
-          >
-            CARREGAR POKÉMON
-          </Button>
-        </View>
-      ) : (
         <FlatList
           data={pokemons}
           keyExtractor={(item) => item.id.toString()}
@@ -295,8 +228,8 @@ const CardsScreen = () => {
             ) : null
           }
         />
-      )}
-    </View>
+      </View>
+    </SafeAreaProvider>
   );
 };
 
