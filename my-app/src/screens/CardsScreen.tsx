@@ -47,6 +47,12 @@ const CardsScreen = () => {
 
   // Carrega mais Pokémon da API
   const loadMorePokemons = useCallback(async () => {
+    // Evita executar se a tela estiver no estado inicial
+    if (initialLoad) {
+      console.log('Ignorando loadMorePokemons durante carregamento inicial');
+      return;
+    }
+    
     console.log('Chamou loadMorePokemons');
     
     // Evita chamadas duplicadas ou desnecessárias
@@ -55,13 +61,18 @@ const CardsScreen = () => {
       return;
     }
     
+    // Captura o valor atual do offset para usá-lo consistentemente
+    const currentOffset = offset;
+    console.log(`Preparando para buscar com offset=${currentOffset}, limit=${PAGE_SIZE}`);
+    
     try {
       setError(null);
       setLoading(true);
-      console.log(`Buscando Pokémons: offset=${offset}, limit=${PAGE_SIZE}`);
+      
+      console.log(`Buscando mais Pokémons: offset=${currentOffset}, limit=${PAGE_SIZE}`);
       
       // Busca lista de Pokémons
-      const response = await fetchPokemons(offset, PAGE_SIZE);
+      const response = await fetchPokemons(currentOffset, PAGE_SIZE);
       
       if (!response || !response.results || response.results.length === 0) {
         console.log('Nenhum resultado encontrado');
@@ -109,7 +120,7 @@ const CardsScreen = () => {
       
       // Formata os detalhes obtidos
       const formattedPokemons = allPokemonDetails
-        .filter(Boolean)
+        .filter((data): data is PokemonDetails => Boolean(data))
         .map(data => ({
           id: data.id,
           name: data.name,
@@ -121,7 +132,10 @@ const CardsScreen = () => {
       
       // Atualiza o estado apenas se houver resultados
       if (formattedPokemons.length > 0) {
-        setOffset(prevOffset => prevOffset + PAGE_SIZE);
+        // Atualiza o offset para o próximo lote
+        const newOffset = currentOffset + PAGE_SIZE;
+        console.log(`Atualizando offset para: ${newOffset}`);
+        setOffset(newOffset);
         
         setPokemons(prev => {
           const newPokemons = [...prev];
@@ -163,38 +177,116 @@ const CardsScreen = () => {
     }
   }, [hasMore, loading, offset, initialLoad]);
 
+  // useEffect adicional para registrar as mudanças de estado
+  useEffect(() => {
+    console.log(`Estado atual: loading=${loading}, initialLoad=${initialLoad}, pokemons=${pokemons.length}, offset=${offset}`);
+  }, [loading, initialLoad, pokemons.length, offset]);
+
   // Carrega os Pokémon ao iniciar a tela (sempre da API)
   useEffect(() => {
+    let isMounted = true;
+    
     const initializeScreen = async () => {
       console.log('Inicializando tela de Cards');
+      
+      if (!isMounted) return;
+      
+      // Definir estado inicial
+      setLoading(true);
       setPokemons([]);
       setOffset(0);
       setHasMore(true);
-      setLoading(true);
+      setError(null);
       
       try {
-        await loadMorePokemons();
+        console.log('Forçando carregamento inicial de dados');
+        
+        const response = await fetchPokemons(0, PAGE_SIZE);
+        
+        if (!response || !response.results || response.results.length === 0) {
+          console.log('Nenhum resultado encontrado na inicialização');
+          setHasMore(false);
+          setError('Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.');
+          setLoading(false);
+          return;
+        }
+        
+        if (!response.next) {
+          setHasMore(false);
+        }
+        
+        // Processa em um único lote para inicialização
+        console.log(`Processando ${response.results.length} Pokémons`);
+        
+        const pokemonPromises = response.results.map(pokemon => 
+          fetchPokemonDetails(pokemon.name)
+            .catch(error => {
+              console.error(`Erro ao buscar detalhes de ${pokemon.name}:`, error);
+              return null;
+            })
+        );
+        
+        const results = await Promise.all(pokemonPromises);
+        
+        // Formata os detalhes obtidos
+        const formattedPokemons = results
+          .filter((data): data is PokemonDetails => Boolean(data))
+          .map(data => ({
+            id: data.id,
+            name: data.name,
+            image: data.sprites.other['official-artwork'].front_default || data.sprites.front_default,
+            types: data.types.map(typeInfo => typeInfo.type.name)
+          }));
+        
+        console.log(`Total de Pokémons carregados na inicialização: ${formattedPokemons.length}`);
+        
+        if (formattedPokemons.length > 0) {
+          setOffset(PAGE_SIZE);
+          setPokemons(formattedPokemons);
+          setInitialLoad(false);
+        } else {
+          setError('Não foi possível carregar os Pokémons. Verifique sua conexão e tente novamente.');
+        }
       } catch (error) {
         console.error('Erro na inicialização:', error);
-        setLoading(false);
+        setError('Ocorreu um problema ao carregar os Pokémons. Verifique sua conexão de internet e tente novamente.');
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+          setInitialLoad(false);
+        }
       }
     };
 
     initializeScreen();
-  }, [loadMorePokemons]);
+    
+    // Cleanup para evitar atualização de estado em componente desmontado
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Sem dependências para executar apenas uma vez
 
-  // Função para atualizar a lista
+  // Função para atualizar a lista manualmente
   const onRefresh = useCallback(() => {
-    if (refreshing) return;
+    if (refreshing || loading) {
+      console.log('Ignorando refresh (já está atualizando)');
+      return;
+    }
     
     console.log('Iniciando refresh manual');
     setRefreshing(true);
     setPokemons([]);
     setOffset(0);
     setHasMore(true);
+    setError(null);
+    setInitialLoad(false); // Importante: não é mais carregamento inicial
     
-    loadMorePokemons();
-  }, [refreshing, loadMorePokemons]);
+    // Executa um pequeno timeout para garantir que os estados sejam atualizados antes de chamar loadMorePokemons
+    setTimeout(() => {
+      loadMorePokemons();
+    }, 100);
+    
+  }, [refreshing, loading, loadMorePokemons]);
 
   // Função para remover um Pokémon da lista
   const handleRemovePokemon = async (id: number) => {
