@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { TextInput, Button, Text } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,11 +16,21 @@ type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, '
 const LoginScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [secureTextEntry, setSecureTextEntry] = useState(true);
   
   const navigation = useNavigation<LoginScreenNavigationProp>();
-  const { signIn } = useAuth();
+  const { signIn, loading, isAuthenticated } = useAuth();
+
+  // Redireciona automaticamente se o usuário já estiver autenticado
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Cards' }],
+      });
+    }
+  }, [isAuthenticated, loading, navigation]);
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -28,13 +38,17 @@ const LoginScreen = () => {
       return;
     }
 
-    setLoading(true);
+    setLoginLoading(true);
     
     try {
       const success = await signIn(username, password);
       
       if (success) {
-        navigation.navigate('Cards');
+        // Navega para a tela principal e limpa o histórico para evitar voltar para o login
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Cards' }],
+        });
       } else {
         Alert.alert('Erro', 'Usuário ou senha incorretos. Tente novamente.');
       }
@@ -42,9 +56,19 @@ const LoginScreen = () => {
       Alert.alert('Erro', 'Houve um problema ao fazer login. Tente novamente.');
       console.error(error);
     } finally {
-      setLoading(false);
+      setLoginLoading(false);
     }
   };
+
+  // Mostra um indicador de carregamento enquanto verifica o estado de autenticação
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1976D2" />
+        <Text style={styles.loadingText}>Carregando...</Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView 
@@ -70,6 +94,7 @@ const LoginScreen = () => {
             mode="outlined"
             style={styles.input}
             autoCapitalize="none"
+            disabled={loginLoading}
           />
           
           <TextInput
@@ -85,14 +110,15 @@ const LoginScreen = () => {
             }
             mode="outlined"
             style={styles.input}
+            disabled={loginLoading}
           />
           
           <Button 
             mode="contained" 
             onPress={handleLogin}
             style={styles.button}
-            loading={loading}
-            disabled={loading}
+            loading={loginLoading}
+            disabled={loginLoading}
           >
             ENTRAR
           </Button>
@@ -101,7 +127,7 @@ const LoginScreen = () => {
             mode="outlined" 
             onPress={() => navigation.navigate('Register')}
             style={styles.button}
-            disabled={loading}
+            disabled={loginLoading}
           >
             CADASTRAR USUÁRIO
           </Button>
@@ -143,6 +169,16 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 

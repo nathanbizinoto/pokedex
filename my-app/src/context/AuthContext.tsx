@@ -1,5 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Chaves para armazenamento no AsyncStorage
+const USER_STORAGE_KEY = '@Pokedex:user';
+const USERS_STORAGE_KEY = '@Pokedex:users';
 
 type User = {
   username: string;
@@ -15,7 +19,8 @@ type AuthContextData = {
   loading: boolean;
   signIn: (username: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
-  registerUser: (userData: User & { password: string }) => Promise<void>;
+  registerUser: (userData: User & { password: string }) => Promise<boolean>;
+  isAuthenticated: boolean;
 };
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -24,17 +29,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
-    // Verificar se já existe um usuário logado
+  // Verifica se o usuário já está logado quando o app inicia
+  useEffect(() => {
     const loadStoredData = async () => {
-      setLoading(true);
-      const storedUser = await AsyncStorage.getItem('@Pokedex:user');
-      
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+      try {
+        setLoading(true);
+        const storedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
+        
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+          console.log('Usuário recuperado do AsyncStorage');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados do AsyncStorage:', error);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     };
 
     loadStoredData();
@@ -42,49 +52,84 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signIn = async (username: string, password: string) => {
     try {
-      // Buscar usuários do AsyncStorage
-      const storedUsers = await AsyncStorage.getItem('@Pokedex:users');
+      setLoading(true);
       
-      if (storedUsers) {
-        const users = JSON.parse(storedUsers);
-        const foundUser = users.find((u: User & { password: string }) => 
-          u.username === username && u.password === password
-        );
-        
-        if (foundUser) {
-          // Remover a senha antes de armazenar no contexto
-          const { password: _, ...userWithoutPassword } = foundUser;
-          setUser(userWithoutPassword);
-          await AsyncStorage.setItem('@Pokedex:user', JSON.stringify(userWithoutPassword));
-          return true;
-        }
+      // Busca usuários do AsyncStorage
+      const storedUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+      
+      if (!storedUsers) {
+        console.log('Nenhum usuário cadastrado');
+        return false;
       }
+      
+      const users = JSON.parse(storedUsers);
+      const foundUser = users.find((u: User & { password: string }) => 
+        u.username === username && u.password === password
+      );
+      
+      if (foundUser) {
+        // Remove a senha antes de armazenar no contexto
+        const { password: _, ...userWithoutPassword } = foundUser;
+        
+        // Salva o usuário no AsyncStorage e no estado
+        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userWithoutPassword));
+        setUser(userWithoutPassword);
+        console.log('Login realizado com sucesso');
+        return true;
+      }
+      
+      console.log('Usuário ou senha incorretos');
       return false;
     } catch (error) {
       console.error('Erro ao fazer login:', error);
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
-    await AsyncStorage.removeItem('@Pokedex:user');
-    setUser(null);
+    try {
+      setLoading(true);
+      // Remove o usuário do AsyncStorage e do estado
+      await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      setUser(null);
+      console.log('Logout realizado com sucesso');
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const registerUser = async (userData: User & { password: string }) => {
     try {
-      // Buscar usuários existentes
-      const storedUsers = await AsyncStorage.getItem('@Pokedex:users');
+      setLoading(true);
+      
+      // Verifica se já existem usuários cadastrados
+      const storedUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
       let users = storedUsers ? JSON.parse(storedUsers) : [];
       
-      // Adicionar novo usuário
+      // Verifica se o usuário já existe
+      const userExists = users.some((u: User) => u.username === userData.username);
+      
+      if (userExists) {
+        console.log('Usuário já existe');
+        return false;
+      }
+      
+      // Adiciona o novo usuário à lista
       users.push(userData);
       
-      // Salvar lista atualizada
-      await AsyncStorage.setItem('@Pokedex:users', JSON.stringify(users));
+      // Salva a lista atualizada no AsyncStorage
+      await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      console.log('Usuário registrado com sucesso');
+      return true;
     } catch (error) {
       console.error('Erro ao registrar usuário:', error);
-      throw error;
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,6 +141,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         signIn,
         signOut,
         registerUser,
+        isAuthenticated: !!user,
       }}
     >
       {children}

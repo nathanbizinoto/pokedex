@@ -248,52 +248,54 @@ const CardsScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Title>Olá, {user?.name || 'Treinador'}</Title>
-        <Button 
-          mode="text" 
-          icon="logout" 
+        <View style={styles.userInfo}>
+          <Title style={styles.title}>PokéDex</Title>
+          {user && <Text style={styles.welcomeText}>Olá, {user.name.split(' ')[0]}!</Text>}
+        </View>
+        <IconButton
+          icon="logout"
+          size={24}
           onPress={handleLogout}
-        >
-          Sair
-        </Button>
+          style={styles.logoutButton}
+        />
       </View>
-
+      
       {pokemons.length === 0 && !loading ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            Nenhum Pokémon encontrado. Adicione alguns!
-          </Text>
+          <Text style={styles.emptyText}>Nenhum Pokémon encontrado</Text>
+          <Button 
+            mode="contained" 
+            onPress={onRefresh}
+            style={styles.refreshButton}
+          >
+            CARREGAR POKÉMON
+          </Button>
         </View>
       ) : (
         <FlatList
           data={pokemons}
-          renderItem={renderPokemonCard}
           keyExtractor={(item) => item.id.toString()}
+          renderItem={renderPokemonCard}
           contentContainerStyle={styles.list}
+          onEndReached={loadMorePokemons}
+          onEndReachedThreshold={0.1}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
+              colors={['#2196F3']}
             />
           }
-          onEndReached={loadMorePokemons}
-          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            loading && !refreshing ? (
+              <View style={styles.loadingFooter}>
+                <ActivityIndicator size="large" color="#2196F3" />
+                <Text>Carregando mais Pokémon...</Text>
+              </View>
+            ) : null
+          }
         />
       )}
-
-      {loading && !refreshing && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
-        </View>
-      )}
-
-      <FAB
-        style={styles.fab}
-        icon="plus"
-        label="Adicionar"
-        onPress={loadMorePokemons}
-        disabled={loading || !hasMore}
-      />
     </View>
   );
 };
@@ -308,8 +310,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#fff',
-    elevation: 2,
+    backgroundColor: '#2196F3',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  title: {
+    color: 'white',
+    fontSize: 24,
+  },
+  welcomeText: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 4,
+  },
+  logoutButton: {
+    margin: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   list: {
     padding: 12,
@@ -354,21 +371,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
   },
-  loadingContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: 'center',
+  loadingFooter: {
+    flexDirection: 'row',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    alignItems: 'center',
+    padding: 12,
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
+  refreshButton: {
+    marginTop: 16,
   },
 });
 

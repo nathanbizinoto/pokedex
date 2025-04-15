@@ -23,6 +23,7 @@ const RegisterScreen = () => {
   const [course, setCourse] = useState('');
   const [loading, setLoading] = useState(false);
   const [secureTextEntry, setSecureTextEntry] = useState(true);
+  const [secureConfirmTextEntry, setSecureConfirmTextEntry] = useState(true);
   
   const navigation = useNavigation<RegisterScreenNavigationProp>();
   const { registerUser } = useAuth();
@@ -45,7 +46,50 @@ const RegisterScreen = () => {
       return false;
     }
 
+    // Validação simples de CPF (apenas verifica se tem 11 dígitos)
+    const cpfDigits = cpf.replace(/\D/g, '');
+    if (cpfDigits.length !== 11) {
+      Alert.alert('Atenção', 'Por favor, insira um CPF válido (11 dígitos)');
+      return false;
+    }
+
     return true;
+  };
+
+  const formatCpf = (value: string) => {
+    // Remove todos os caracteres não numéricos
+    const digits = value.replace(/\D/g, '');
+    
+    // Limita a 11 dígitos
+    const cpfDigits = digits.slice(0, 11);
+    
+    // Formata o CPF (XXX.XXX.XXX-XX)
+    if (cpfDigits.length <= 3) {
+      return cpfDigits;
+    } else if (cpfDigits.length <= 6) {
+      return `${cpfDigits.slice(0, 3)}.${cpfDigits.slice(3)}`;
+    } else if (cpfDigits.length <= 9) {
+      return `${cpfDigits.slice(0, 3)}.${cpfDigits.slice(3, 6)}.${cpfDigits.slice(6)}`;
+    } else {
+      return `${cpfDigits.slice(0, 3)}.${cpfDigits.slice(3, 6)}.${cpfDigits.slice(6, 9)}-${cpfDigits.slice(9)}`;
+    }
+  };
+
+  const formatPhone = (value: string) => {
+    // Remove todos os caracteres não numéricos
+    const digits = value.replace(/\D/g, '');
+    
+    // Limita a 11 dígitos (com DDD)
+    const phoneDigits = digits.slice(0, 11);
+    
+    // Formata o telefone ((XX) XXXXX-XXXX)
+    if (phoneDigits.length <= 2) {
+      return phoneDigits;
+    } else if (phoneDigits.length <= 7) {
+      return `(${phoneDigits.slice(0, 2)}) ${phoneDigits.slice(2)}`;
+    } else {
+      return `(${phoneDigits.slice(0, 2)}) ${phoneDigits.slice(2, 7)}-${phoneDigits.slice(7)}`;
+    }
   };
 
   const handleRegister = async () => {
@@ -54,7 +98,7 @@ const RegisterScreen = () => {
     setLoading(true);
     
     try {
-      await registerUser({
+      const success = await registerUser({
         username,
         password,
         name,
@@ -64,11 +108,15 @@ const RegisterScreen = () => {
         course
       });
       
-      Alert.alert(
-        'Sucesso', 
-        'Usuário cadastrado com sucesso!',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
-      );
+      if (success) {
+        Alert.alert(
+          'Sucesso', 
+          'Usuário cadastrado com sucesso!',
+          [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        );
+      } else {
+        Alert.alert('Erro', 'Este nome de usuário já existe. Por favor, escolha outro.');
+      }
     } catch (error) {
       Alert.alert('Erro', 'Houve um problema ao cadastrar o usuário. Tente novamente.');
       console.error(error);
@@ -92,24 +140,27 @@ const RegisterScreen = () => {
             onChangeText={setName}
             mode="outlined"
             style={styles.input}
+            disabled={loading}
           />
           
           <TextInput
             label="Telefone"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(value) => setPhone(formatPhone(value))}
             mode="outlined"
             style={styles.input}
             keyboardType="phone-pad"
+            disabled={loading}
           />
           
           <TextInput
             label="CPF"
             value={cpf}
-            onChangeText={setCpf}
+            onChangeText={(value) => setCpf(formatCpf(value))}
             mode="outlined"
             style={styles.input}
             keyboardType="number-pad"
+            disabled={loading}
           />
           
           <TextInput
@@ -120,6 +171,7 @@ const RegisterScreen = () => {
             style={styles.input}
             keyboardType="email-address"
             autoCapitalize="none"
+            disabled={loading}
           />
           
           <TextInput
@@ -128,6 +180,7 @@ const RegisterScreen = () => {
             onChangeText={setCourse}
             mode="outlined"
             style={styles.input}
+            disabled={loading}
           />
           
           <TextInput
@@ -137,6 +190,7 @@ const RegisterScreen = () => {
             mode="outlined"
             style={styles.input}
             autoCapitalize="none"
+            disabled={loading}
           />
           
           <TextInput
@@ -148,19 +202,29 @@ const RegisterScreen = () => {
               <TextInput.Icon 
                 icon={secureTextEntry ? 'eye' : 'eye-off'} 
                 onPress={() => setSecureTextEntry(!secureTextEntry)} 
+                disabled={loading}
               />
             }
             mode="outlined"
             style={styles.input}
+            disabled={loading}
           />
           
           <TextInput
             label="Confirmar senha"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
-            secureTextEntry={secureTextEntry}
+            secureTextEntry={secureConfirmTextEntry}
+            right={
+              <TextInput.Icon 
+                icon={secureConfirmTextEntry ? 'eye' : 'eye-off'} 
+                onPress={() => setSecureConfirmTextEntry(!secureConfirmTextEntry)} 
+                disabled={loading}
+              />
+            }
             mode="outlined"
             style={styles.input}
+            disabled={loading}
           />
           
           <Button 
