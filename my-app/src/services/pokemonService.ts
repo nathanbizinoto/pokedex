@@ -52,9 +52,9 @@ export interface PokemonDetails {
 }
 
 const BASE_URL = 'https://pokeapi.co/api/v2';
-const TIMEOUT_MS = 15000; // 15 segundos
+const TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
-const RETRY_DELAY_BASE = 1000; // 1 segundo inicial
+const RETRY_DELAY_BASE = 1000;
 let alertShownTimestamp = 0; 
 
 // Função utilitária para timeout de Promise
@@ -142,7 +142,6 @@ export const fetchPokemonDetails = async (nameOrId: string | number): Promise<Po
     return data;
   } catch (error) {
     console.error(`Erro ao buscar detalhes do Pokémon ${nameOrId}:`, error);
-    // Não mostra alertas para detalhes individuais para evitar spam
     throw error;
   }
 }; 

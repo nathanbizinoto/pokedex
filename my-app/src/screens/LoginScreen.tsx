@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { TextInput, Button, Text } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { 
+  View, 
+  StyleSheet, 
+  KeyboardAvoidingView, 
+  Platform, 
+  ScrollView, 
+  Image,
+  ImageBackground
+} from 'react-native';
+import { 
+  TextInput, 
+  Button, 
+  Text, 
+  ActivityIndicator
+} from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { Alert } from 'react-native';
+import Colors from '../constants/Colors';
 
 type RootStackParamList = {
   Login: undefined;
@@ -64,7 +79,7 @@ const LoginScreen = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1976D2" />
+        <ActivityIndicator size="large" color={Colors.light.primary} />
         <Text style={styles.loadingText}>Carregando...</Text>
       </View>
     );
@@ -76,62 +91,72 @@ const LoginScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.logoContainer}>
-          <Image 
-            source={{ uri: 'https://raw.githubusercontent.com/PokeAPI/media/master/logo/pokeapi_256.png' }} 
-            style={styles.logo} 
-            resizeMode="contain"
-          />
-        </View>
-        
-        <Text style={styles.title}>PokéDex App</Text>
-        
-        <View style={styles.formContainer}>
-          <TextInput
-            label="Usuário"
-            value={username}
-            onChangeText={setUsername}
-            mode="outlined"
-            style={styles.input}
-            autoCapitalize="none"
-            disabled={loginLoading}
-          />
+        <ImageBackground 
+          source={{ uri: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png' }} 
+          style={styles.backgroundImage}
+          imageStyle={styles.backgroundImageStyle}
+        >
+          <View style={styles.logoContainer}>
+            <Image 
+              source={{ uri: 'https://raw.githubusercontent.com/PokeAPI/media/master/logo/pokeapi_256.png' }} 
+              style={styles.logo} 
+              resizeMode="contain"
+            />
+          </View>
           
-          <TextInput
-            label="Senha"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={secureTextEntry}
-            right={
-              <TextInput.Icon 
-                icon={secureTextEntry ? 'eye' : 'eye-off'} 
-                onPress={() => setSecureTextEntry(!secureTextEntry)} 
-              />
-            }
-            mode="outlined"
-            style={styles.input}
-            disabled={loginLoading}
-          />
+          <Text style={styles.title}>PokéDex App</Text>
           
-          <Button 
-            mode="contained" 
-            onPress={handleLogin}
-            style={styles.button}
-            loading={loginLoading}
-            disabled={loginLoading}
-          >
-            ENTRAR
-          </Button>
-          
-          <Button 
-            mode="outlined" 
-            onPress={() => navigation.navigate('Register')}
-            style={styles.button}
-            disabled={loginLoading}
-          >
-            CADASTRAR USUÁRIO
-          </Button>
-        </View>
+          <View style={styles.formContainer}>
+            <TextInput
+              label="Usuário"
+              value={username}
+              onChangeText={setUsername}
+              mode="outlined"
+              style={styles.input}
+              autoCapitalize="none"
+              disabled={loginLoading}
+              activeOutlineColor={Colors.light.primary}
+            />
+            
+            <TextInput
+              label="Senha"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={secureTextEntry}
+              right={
+                <TextInput.Icon 
+                  icon={secureTextEntry ? 'eye' : 'eye-off'} 
+                  onPress={() => setSecureTextEntry(!secureTextEntry)} 
+                />
+              }
+              mode="outlined"
+              style={styles.input}
+              disabled={loginLoading}
+              activeOutlineColor={Colors.light.primary}
+            />
+            
+            <Button 
+              mode="contained" 
+              onPress={handleLogin}
+              style={styles.button}
+              loading={loginLoading}
+              disabled={loginLoading}
+              buttonColor={Colors.light.primary}
+            >
+              ENTRAR
+            </Button>
+            
+            <Button 
+              mode="outlined" 
+              onPress={() => navigation.navigate('Register')}
+              style={styles.button}
+              disabled={loginLoading}
+              textColor={Colors.light.primary}
+            >
+              CADASTRAR USUÁRIO
+            </Button>
+          </View>
+        </ImageBackground>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -140,15 +165,23 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
   },
   scrollContainer: {
     flexGrow: 1,
+  },
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
     justifyContent: 'center',
-    padding: 20,
+  },
+  backgroundImageStyle: {
+    opacity: 0.1,
+    resizeMode: 'contain',
   },
   logoContainer: {
     alignItems: 'center',
+    marginTop: 60,
     marginBottom: 20,
   },
   logo: {
@@ -156,29 +189,34 @@ const styles = StyleSheet.create({
     height: 80,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 20,
+    color: Colors.light.primary,
     textAlign: 'center',
+    marginBottom: 30,
   },
   formContainer: {
-    width: '100%',
+    paddingHorizontal: 30,
+    marginBottom: 40,
   },
   input: {
     marginBottom: 16,
+    backgroundColor: '#fff',
   },
   button: {
-    marginTop: 10,
+    marginTop: 12,
+    paddingVertical: 6,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
+    color: Colors.light.primary,
   },
 });
 
