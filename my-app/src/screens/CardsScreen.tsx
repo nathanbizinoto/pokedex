@@ -155,6 +155,7 @@ const CardsScreen = () => {
             style={styles.cardButton}
             icon="delete"
             buttonColor={Colors.light.primary}
+            textColor={Colors.light.primary}
           >
             Excluir
           </Button>
