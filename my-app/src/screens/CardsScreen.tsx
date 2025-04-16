@@ -150,12 +150,12 @@ const CardsScreen = () => {
         </View>
         <Card.Actions style={styles.cardActions}>
           <Button 
-            mode="outlined" 
+            mode="contained" 
             onPress={() => handleRemovePokemon(item.id)}
             style={styles.cardButton}
             icon="delete"
-            buttonColor={Colors.light.primary}
-            textColor={Colors.light.primary}
+            buttonColor="#f44336"
+            textColor="white"
           >
             Excluir
           </Button>
