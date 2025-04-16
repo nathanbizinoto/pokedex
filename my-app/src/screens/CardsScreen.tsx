@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity, Image } from 'react-native';
+import { View, StyleSheet, FlatList, Alert, TouchableOpacity, Image } from 'react-native';
 import { ActivityIndicator, Button, Card, IconButton, Text, Title, Searchbar } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -29,6 +29,7 @@ const CardsScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResult, setSearchResult] = useState<SavedPokemon | null>(null);
   
   const navigation = useNavigation<CardsScreenNavigationProp>();
   const { user, signOut } = useAuth();
@@ -58,7 +59,7 @@ const CardsScreen = () => {
       
       if (!pokemonData) {
         setError('Pokémon não encontrado. Verifique o nome ou número digitado.');
-        setPokemons([]);
+        setSearchResult(null);
         return;
       }
       
@@ -69,12 +70,13 @@ const CardsScreen = () => {
         types: pokemonData.types.map(typeInfo => typeInfo.type.name)
       };
       
-      setPokemons([formattedPokemon]);
+      // Mostrar o resultado da pesquisa
+      setSearchResult(formattedPokemon);
       
     } catch (error) {
       console.error('Erro ao pesquisar Pokémon:', error);
       setError('Não foi possível encontrar o Pokémon. Verifique o nome ou número e tente novamente.');
-      setPokemons([]);
+      setSearchResult(null);
     } finally {
       setLoading(false);
     }
@@ -83,8 +85,21 @@ const CardsScreen = () => {
   // Função para limpar a pesquisa
   const handleClearSearch = () => {
     setSearchQuery('');
-    setPokemons([]);
+    setSearchResult(null);
     setError(null);
+  };
+
+  // Função para adicionar o Pokémon pesquisado à lista
+  const handleAddPokemon = (pokemon: SavedPokemon) => {
+    // Verificar se o Pokémon já está na lista
+    if (!pokemons.some(p => p.id === pokemon.id)) {
+      setPokemons(prev => [...prev, pokemon]);
+      setSearchResult(null);
+      setSearchQuery('');
+      Alert.alert('Sucesso', `${pokemon.name} foi adicionado à sua Pokédex!`);
+    } else {
+      Alert.alert('Atenção', `${pokemon.name} já está na sua Pokédex!`);
+    }
   };
 
   // Função para navegar para os detalhes do Pokémon
@@ -103,7 +118,7 @@ const CardsScreen = () => {
 
   // Função para remover um Pokémon da lista
   const handleRemovePokemon = (id: number) => {
-    setPokemons([]);
+    setPokemons(prev => prev.filter(pokemon => pokemon.id !== id));
   };
 
   // Função para fazer logout
@@ -125,6 +140,43 @@ const CardsScreen = () => {
           style: 'destructive'
         }
       ]
+    );
+  };
+
+  // Renderiza o resultado da pesquisa
+  const renderSearchResult = () => {
+    if (!searchResult) return null;
+    
+    return (
+      <Card style={styles.searchResultCard}>
+        {searchResult.image && (
+          <Card.Cover source={{ uri: searchResult.image }} />
+        )}
+        <Card.Title 
+          title={searchResult.name.charAt(0).toUpperCase() + searchResult.name.slice(1)} 
+        />
+        <View style={styles.typesContainer}>
+          {searchResult.types.map((type, index) => (
+            <View 
+              key={index} 
+              style={[styles.typeTag, { backgroundColor: getTypeColor(type) }]}
+            >
+              <Text style={styles.typeText}>{type}</Text>
+            </View>
+          ))}
+        </View>
+        <Card.Actions style={styles.cardActions}>
+          <Button 
+            mode="contained" 
+            onPress={() => handleAddPokemon(searchResult)}
+            style={styles.cardButton}
+            icon="plus"
+            buttonColor={Colors.light.primary}
+          >
+            Adicionar
+          </Button>
+        </Card.Actions>
+      </Card>
     );
   };
 
@@ -241,44 +293,49 @@ const CardsScreen = () => {
           </Button>
         </View>
         
-        {error ? (
+        {loading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={Colors.light.primary} />
+            <Text style={styles.loadingText}>Buscando Pokémon...</Text>
+          </View>
+        ) : error ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : (
-          <FlatList
-            data={pokemons}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderPokemonCard}
-            contentContainerStyle={[
-              styles.list,
-              pokemons.length === 0 && styles.emptyList
-            ]}
-            ListEmptyComponent={
-              loading ? (
-                <View style={styles.emptyContainer}>
-                  <ActivityIndicator size="large" color={Colors.light.primary} />
-                  <Text style={styles.loadingText}>Buscando Pokémon...</Text>
-                </View>
-              ) : searchQuery ? (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>
-                    Nenhum pokémon encontrado. Tente outro nome ou número.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.emptyContainer}>
-                  <Image 
-                    source={{ uri: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png' }}
-                    style={styles.emptyImage}
-                  />
-                  <Text style={styles.emptyText}>
-                    Digite o nome ou número do Pokémon para pesquisar
-                  </Text>
-                </View>
-              )
-            }
-          />
+          <View style={styles.contentContainer}>
+            {/* Resultado da pesquisa */}
+            {searchResult && renderSearchResult()}
+            
+            {/* Lista de Pokémon adicionados */}
+            <FlatList
+              data={pokemons}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={renderPokemonCard}
+              contentContainerStyle={[
+                styles.list,
+                pokemons.length === 0 && !searchResult && styles.emptyList
+              ]}
+              ListHeaderComponent={
+                pokemons.length > 0 ? (
+                  <Text style={styles.sectionTitle}>Seus Pokémon</Text>
+                ) : null
+              }
+              ListEmptyComponent={
+                !searchResult ? (
+                  <View style={styles.emptyContainer}>
+                    <Image 
+                      source={{ uri: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png' }}
+                      style={styles.emptyImage}
+                    />
+                    <Text style={styles.emptyText}>
+                      Digite o nome ou número do Pokémon para pesquisar
+                    </Text>
+                  </View>
+                ) : null
+              }
+            />
+          </View>
         )}
       </View>
     </SafeAreaProvider>
@@ -335,6 +392,18 @@ const styles = StyleSheet.create({
   searchButton: {
     justifyContent: 'center',
     borderRadius: 8,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  searchResultCard: {
+    margin: 12,
+    marginBottom: 0,
+    elevation: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: Colors.light.primary,
   },
   list: {
     padding: 12,
@@ -402,6 +471,12 @@ const styles = StyleSheet.create({
   cardButton: {
     flex: 1,
     marginHorizontal: 4,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: Colors.light.primary,
   },
 });
 
