@@ -34,6 +34,56 @@ const CardsScreen = () => {
   const navigation = useNavigation<CardsScreenNavigationProp>();
   const { user, signOut } = useAuth();
 
+  // Chave para armazenamento dos Pokémon no AsyncStorage
+  const getPokemonStorageKey = useCallback(() => {
+    return `@Pokedex:pokemons:${user?.username || 'guest'}`;
+  }, [user]);
+  
+  // Carrega os Pokémon salvos quando o componente é montado
+  useEffect(() => {
+    const loadSavedPokemons = async () => {
+      try {
+        if (!user) return;
+        
+        setLoading(true);
+        const storageKey = getPokemonStorageKey();
+        const savedPokemonsJson = await AsyncStorage.getItem(storageKey);
+        
+        if (savedPokemonsJson) {
+          const savedPokemons = JSON.parse(savedPokemonsJson);
+          console.log(`Carregados ${savedPokemons.length} Pokémon do usuário ${user.username}`);
+          setPokemons(savedPokemons);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar Pokémon salvos:', error);
+        Alert.alert('Erro', 'Não foi possível carregar seus Pokémon salvos');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSavedPokemons();
+  }, [user, getPokemonStorageKey]);
+  
+  // Salva os Pokémon no AsyncStorage quando há alterações
+  useEffect(() => {
+    const savePokemons = async () => {
+      try {
+        if (!user) return;
+        
+        const storageKey = getPokemonStorageKey();
+        await AsyncStorage.setItem(storageKey, JSON.stringify(pokemons));
+        console.log(`Salvos ${pokemons.length} Pokémon para o usuário ${user.username}`);
+      } catch (error) {
+        console.error('Erro ao salvar Pokémon:', error);
+      }
+    };
+
+    if (user) {
+      savePokemons();
+    }
+  }, [pokemons, user, getPokemonStorageKey]);
+
   // Função para pesquisar Pokémon
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
@@ -132,6 +182,8 @@ const CardsScreen = () => {
           text: 'Sair', 
           onPress: async () => {
             await signOut();
+            // Limpa a coleção local ao fazer logout
+            setPokemons([]);
             navigation.reset({
               index: 0,
               routes: [{ name: 'Login' }]
