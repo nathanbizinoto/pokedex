@@ -226,7 +226,7 @@ const CardsScreen = () => {
             autoCapitalize="none"
             placeholderTextColor="#888"
             icon="magnify"
-            clearIcon={() => searchQuery ? 'close' : ''}
+            clearIcon={searchQuery ? "close" : undefined}
             onIconPress={handleSearch}
             onClearIconPress={handleClearSearch}
           />
